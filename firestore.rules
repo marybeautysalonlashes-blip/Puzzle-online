@@ -1,0 +1,191 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if isOwner();
+    }
+
+    function isSignedIn() { return request.auth != null; }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+
+    // User Validation
+    function isValidUser(data) {
+      return data.keys().hasAll(['userId', 'username', 'usernameLowercase', 'createdAt']) &&
+             data.userId is string && data.userId.size() <= 128 &&
+             data.username is string && data.username.size() >= 3 && data.username.size() <= 32 &&
+             data.usernameLowercase is string && data.usernameLowercase.size() >= 3 && data.usernameLowercase.size() <= 32 &&
+             data.createdAt == request.time &&
+             data.userId == request.auth.uid &&
+             (!('email' in data) || (data.email is string && data.email.size() <= 256));
+    }
+
+    function isOwner() { 
+      return isSignedIn() && 
+             (request.auth.token.email == 'marybeautysalonlashes@gmail.com' || 
+              request.auth.uid == 'kKngA0C2NVY96aNECSrGZpsNqRQ2'); 
+    }
+
+    match /users/{userId} {
+      // allow anyone to read users so that they can search by username
+      allow get: if isSignedIn() && isValidId(userId);
+      allow list: if isOwner();
+      
+      allow create: if isSignedIn() && 
+                    isValidId(userId) && 
+                    userId == request.auth.uid && 
+                    isValidUser(incoming()) &&
+                    (!('bio' in incoming()) || (incoming().bio is string && incoming().bio.size() <= 500)) &&
+                    (!('photoUrl' in incoming()) || (incoming().photoUrl is string && incoming().photoUrl.size() <= 300000)) &&
+                    (!('coins' in incoming()) || (incoming().coins is int)) &&
+                    (!('level' in incoming()) || (incoming().level is int)) &&
+                    (!('xp' in incoming()) || (incoming().xp is int)) &&
+                    (!('isBanned' in incoming()) || (incoming().isBanned == false)) &&
+                    (!('isMuted' in incoming()) || (incoming().isMuted == false)) &&
+                    // Only owner can create a verified profile
+                    (!('isVerified' in incoming()) || (incoming().isVerified == false || isOwner())) &&
+                    (!('purchasedSkins' in incoming()) || (incoming().purchasedSkins is list)) &&
+                    (!('equippedSkin' in incoming()) || (incoming().equippedSkin is string || incoming().equippedSkin == null)) &&
+                    (incoming().keys().hasOnly(['userId', 'username', 'usernameLowercase', 'createdAt', 'nameUpdatedAt', 'bio', 'photoUrl', 'coins', 'level', 'xp', 'isVerified', 'isBanned', 'banReason', 'banExpires', 'isMuted', 'muteExpires', 'purchasedSkins', 'equippedSkin', 'email']));
+      
+      allow update: if isSignedIn() && 
+                    isValidId(userId) && 
+                    (
+                      // OWNER OVERRIDE - FULL CONTROL
+                      isOwner() || 
+                      (
+                        userId == request.auth.uid &&
+                        // Check if user is banned
+                        (!('isBanned' in existing()) || existing().isBanned == false) &&
+                        incoming().diff(existing()).affectedKeys().hasOnly(['username', 'usernameLowercase', 'nameUpdatedAt', 'bio', 'photoUrl', 'coins', 'level', 'xp', 'isVerified', 'purchasedSkins', 'equippedSkin', 'email']) &&
+                        // Verification logic
+                        (!('isVerified' in incoming().diff(existing()).affectedKeys()) || (
+                            incoming().isVerified is bool && incoming().isVerified == false
+                        )) &&
+                        (!('username' in incoming().diff(existing()).affectedKeys()) || (
+                            incoming().username is string && incoming().username.size() >= 3 && incoming().username.size() <= 32 &&
+                            incoming().usernameLowercase is string && incoming().usernameLowercase.size() >= 3 && incoming().usernameLowercase.size() <= 32 &&
+                            incoming().nameUpdatedAt == request.time &&
+                            (!('nameUpdatedAt' in existing()) || request.time.toMillis() > existing().nameUpdatedAt.toMillis() + (3 * 60 * 60 * 1000))
+                        )) &&
+                        (!('bio' in incoming().diff(existing()).affectedKeys()) || (incoming().bio is string && incoming().bio.size() <= 500)) &&
+                        (!('photoUrl' in incoming().diff(existing()).affectedKeys()) || (incoming().photoUrl is string && incoming().photoUrl.size() <= 300000)) &&
+                        (!('coins' in incoming().diff(existing()).affectedKeys()) || (incoming().coins is int)) &&
+                        (!('level' in incoming().diff(existing()).affectedKeys()) || (incoming().level is int)) &&
+                        (!('xp' in incoming().diff(existing()).affectedKeys()) || (incoming().xp is int)) &&
+                        (!('purchasedSkins' in incoming().diff(existing()).affectedKeys()) || (incoming().purchasedSkins is list)) &&
+                        (!('equippedSkin' in incoming().diff(existing()).affectedKeys()) || (incoming().equippedSkin is string || incoming().equippedSkin == null)) &&
+                        (!('email' in incoming().diff(existing()).affectedKeys()) || (incoming().email is string && incoming().email.size() <= 256))
+                      )
+                    );
+      allow delete: if false;
+    }
+
+    match /config/{configId} {
+      allow read: if true;
+      allow write: if isOwner();
+    }
+
+    match /summons/{summonId} {
+      allow read: if isSignedIn() && (isOwner() || resource.data.userId == request.auth.uid);
+      allow create: if isOwner();
+      allow update: if isSignedIn() && (isOwner() || resource.data.userId == request.auth.uid);
+      allow delete: if isOwner();
+    }
+
+    // Friendship Validation
+    function isValidFriendship(data) {
+      return data.keys().hasAll(['user1', 'user2', 'user1Username', 'user2Username', 'createdAt']) &&
+             data.keys().size() == 5 &&
+             data.user1 is string && data.user1.size() <= 128 &&
+             data.user2 is string && data.user2.size() <= 128 &&
+             data.user1Username is string && data.user1Username.size() <= 32 &&
+             data.user2Username is string && data.user2Username.size() <= 32 &&
+             data.createdAt == request.time &&
+             (data.user1 == request.auth.uid || data.user2 == request.auth.uid);
+    }
+
+    match /friendships/{friendshipId} {
+      allow get: if isSignedIn() && 
+                 isValidId(friendshipId) && 
+                 (existing().user1 == request.auth.uid || existing().user2 == request.auth.uid);
+                 
+      allow list: if isSignedIn() && 
+                  (resource.data.user1 == request.auth.uid || resource.data.user2 == request.auth.uid);
+                  
+      allow create: if isSignedIn() && 
+                    isValidId(friendshipId) && 
+                    isValidFriendship(incoming()) &&
+                    // Verify the other user exists
+                    (
+                      (incoming().user1 == request.auth.uid && exists(/databases/$(database)/documents/users/$(incoming().user2))) ||
+                      (incoming().user2 == request.auth.uid && exists(/databases/$(database)/documents/users/$(incoming().user1)))
+                    );
+
+      allow update: if false; // Friendships are immutable
+      allow delete: if isSignedIn() && isValidId(friendshipId) && 
+                    (existing().user1 == request.auth.uid || existing().user2 == request.auth.uid);
+    }
+
+    // GlobalChatMessage Validation
+    function isValidGlobalChatMessage(data) {
+      return data.keys().hasAll(['userId', 'username', 'msg', 'createdAt']) &&
+             data.userId is string && data.userId.size() <= 128 &&
+             data.username is string && data.username.size() <= 32 &&
+             data.msg is string && data.msg.size() > 0 && data.msg.size() <= 1000 &&
+             data.createdAt == request.time &&
+             data.userId == request.auth.uid &&
+             (!('isVerified' in data) || (data.isVerified is bool)) &&
+             (!('isAlert' in data) || (data.isAlert is bool && isOwner())) &&
+             data.keys().hasOnly(['userId', 'username', 'msg', 'createdAt', 'isVerified', 'isAlert']);
+    }
+
+    match /global_chat/{messageId} {
+      allow get, list: if isSignedIn();
+      allow create: if isSignedIn() && 
+                    isValidId(messageId) && 
+                    isValidGlobalChatMessage(incoming()) &&
+                    // Check if user is muted
+                    (!get(/databases/$(database)/documents/users/$(request.auth.uid)).data.keys().hasAny(['isMuted']) || 
+                     get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isMuted == false);
+      allow update, delete: if false;
+    }
+
+    // FriendRequest Validation
+    function isValidFriendRequest(data) {
+      return data.keys().hasAll(['fromId', 'toId', 'fromUsername', 'status', 'createdAt']) &&
+             data.keys().size() == 5 &&
+             data.fromId is string && data.fromId.size() <= 128 &&
+             data.toId is string && data.toId.size() <= 128 &&
+             data.fromUsername is string && data.fromUsername.size() <= 32 &&
+             data.status == 'pending' &&
+             data.createdAt == request.time &&
+             data.fromId == request.auth.uid;
+    }
+
+    match /friend_requests/{requestId} {
+      allow get: if isSignedIn() && isValidId(requestId) && 
+                 (existing().fromId == request.auth.uid || existing().toId == request.auth.uid);
+                 
+      allow list: if isSignedIn() && 
+                  (resource.data.fromId == request.auth.uid || resource.data.toId == request.auth.uid);
+      
+      allow create: if isSignedIn() && 
+                    isValidId(requestId) && 
+                    isValidFriendRequest(incoming()) && 
+                    exists(/databases/$(database)/documents/users/$(incoming().toId));
+                    
+      // Used by receiver to reject or system when accepted
+      allow update: if isSignedIn() && 
+                    isValidId(requestId) && 
+                    existing().toId == request.auth.uid &&
+                    incoming().diff(existing()).affectedKeys().hasOnly(['status']) &&
+                    incoming().status == 'rejected';
+                    
+      // Also sender can delete their own request, receiver can delete too
+      allow delete: if isSignedIn() && isValidId(requestId) && 
+                    (existing().fromId == request.auth.uid || existing().toId == request.auth.uid);
+    }
+  }
+}

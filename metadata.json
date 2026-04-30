@@ -1,0 +1,6 @@
+{
+  "name": "Game Lobby UI",
+  "description": "A responsive game lobby interface with chat, friends, and play tabs.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}

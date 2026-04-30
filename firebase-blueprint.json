@@ -1,0 +1,116 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile containing username and basic info.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "username": { "type": "string", "description": "Unique username (lowercase recommended for searching)" },
+        "usernameLowercase": { "type": "string", "description": "For case-insensitive search" },
+        "createdAt": { "type": "string", "format": "timestamp" },
+        "nameUpdatedAt": { "type": "string", "format": "timestamp" },
+        "bio": { "type": "string", "description": "User's bio description" },
+        "photoUrl": { "type": "string", "description": "Base64 encoded profile photo" },
+        "isVerified": { "type": "boolean", "description": "Whether the user account is verified" },
+        "isBanned": { "type": "boolean", "description": "Whether the user is banned" },
+        "banReason": { "type": "string" },
+        "banExpires": { "type": "string", "format": "timestamp" },
+        "isMuted": { "type": "boolean", "description": "Whether the user is muted in chat" },
+        "muteExpires": { "type": "string", "format": "timestamp" },
+        "coins": { "type": "number" },
+        "level": { "type": "number" },
+        "xp": { "type": "number" }
+      },
+      "required": ["userId", "username", "usernameLowercase", "createdAt"]
+    },
+    "GlobalConfig": {
+      "title": "GlobalConfig",
+      "description": "Global application settings controlled by admin.",
+      "type": "object",
+      "properties": {
+        "isShutdown": { "type": "boolean" },
+        "maintenanceMessage": { "type": "string" },
+        "activeGameModes": { "type": "array", "items": { "type": "string" } },
+        "shopEnabled": { "type": "boolean" }
+      }
+    },
+    "PrivateSummon": {
+      "title": "PrivateSummon",
+      "description": "A private chat session between admin and a summoned user.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "adminId": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "closed"] },
+        "createdAt": { "type": "string", "format": "timestamp" }
+      },
+      "required": ["userId", "adminId", "status", "createdAt"]
+    },
+    "Friendship": {
+      "title": "Friendship",
+      "description": "A confirmed friendship between two users.",
+      "type": "object",
+      "properties": {
+        "user1": { "type": "string" },
+        "user2": { "type": "string" },
+        "user1Username": { "type": "string" },
+        "user2Username": { "type": "string" },
+        "createdAt": { "type": "string", "format": "timestamp" }
+      },
+      "required": ["user1", "user2", "user1Username", "user2Username", "createdAt"]
+    },
+    "GlobalChatMessage": {
+      "title": "GlobalChatMessage",
+      "description": "A message in the global chat.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "username": { "type": "string" },
+        "msg": { "type": "string" },
+        "isVerified": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "timestamp" }
+      },
+      "required": ["userId", "username", "msg", "createdAt"]
+    },
+    "FriendRequest": {
+      "title": "FriendRequest",
+      "description": "A request to become friends.",
+      "type": "object",
+      "properties": {
+        "fromId": { "type": "string" },
+        "toId": { "type": "string" },
+        "fromUsername": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "accepted", "rejected"] },
+        "createdAt": { "type": "string", "format": "timestamp" }
+      },
+      "required": ["fromId", "toId", "fromUsername", "status", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User profile data."
+    },
+    "/friendships/{friendshipId}": {
+      "schema": { "$ref": "#/entities/Friendship" },
+      "description": "Confirmed friendships."
+    },
+    "/global_chat/{messageId}": {
+      "schema": { "$ref": "#/entities/GlobalChatMessage" },
+      "description": "Global chat messages."
+    },
+    "/friend_requests/{requestId}": {
+      "schema": { "$ref": "#/entities/FriendRequest" },
+      "description": "Pending and processed friend requests."
+    },
+    "/config/{configId}": {
+      "schema": { "$ref": "#/entities/GlobalConfig" },
+      "description": "Global settings."
+    },
+    "/summons/{summonId}": {
+      "schema": { "$ref": "#/entities/PrivateSummon" },
+      "description": "Active admin summons."
+    }
+  }
+}
